@@ -262,7 +262,7 @@ class OpenidAuthenticationConfiguration():
 		return self.__algorithm
 
 
-def get_openid_connect_http_request_handler(*, client_authentication_manager_client_messenger_factory: ClientMessengerFactory):
+def get_openid_connect_http_request_handler(*, client_authentication_manager_client_messenger_factory: ClientMessengerFactory, authenticated_bytes: bytes, favicon_bytes: bytes):
 	class OpenidConnectHttpRequestHandler(http.server.BaseHTTPRequestHandler):
 
 		__states_sent_via_client_messenger = set()  # type: Set[str]
@@ -281,32 +281,41 @@ def get_openid_connect_http_request_handler(*, client_authentication_manager_cli
 			print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: self.request: {self.request}")
 			client_authentication_manager_client_messenger = client_authentication_manager_client_messenger_factory.get_client_messenger()
 			try:
-				url_query = urlparse(self.path).query
-				url_query_dict = parse_qs(url_query)
-				state = url_query_dict["state"][0]
-				print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: state: {state}")
-
-				OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger_semaphore.acquire()
-				if state not in OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger:
-					print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: adding state")
-					OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger.add(state)
-					is_send_via_client_messenger_required = True
+				if self.path == "/favicon.ico":
+					self.send_response(200)
+					self.send_header("Content-Length", str(len(favicon_bytes)))
+					self.end_headers()
+					self.wfile.write(favicon_bytes)
 				else:
-					print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: already processed state")
-					is_send_via_client_messenger_required = False
-				OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger_semaphore.release()
-				if is_send_via_client_messenger_required:
-					code = url_query_dict["code"][0]
-					print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: connecting to server")
-					client_authentication_manager_client_messenger.connect_to_server()
-					print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: sending to server")
-					client_authentication_manager_client_messenger.send_to_server(
-						request_client_server_message=OpenidAuthenticationResponseClientServerMessage(
-							state=state,
-							code=code
+					url_query = urlparse(self.path).query
+					url_query_dict = parse_qs(url_query)
+					state = url_query_dict["state"][0]
+					print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: state: {state}")
+
+					OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger_semaphore.acquire()
+					if state not in OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger:
+						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: adding state")
+						OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger.add(state)
+						is_send_via_client_messenger_required = True
+					else:
+						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: already processed state")
+						is_send_via_client_messenger_required = False
+					OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger_semaphore.release()
+					if is_send_via_client_messenger_required:
+						code = url_query_dict["code"][0]
+						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: connecting to server")
+						client_authentication_manager_client_messenger.connect_to_server()
+						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: sending to server")
+						client_authentication_manager_client_messenger.send_to_server(
+							request_client_server_message=OpenidAuthenticationResponseClientServerMessage(
+								state=state,
+								code=code
+							)
 						)
-					)
-				self.send_response(200)
+					self.send_response(200)
+					self.send_header("Content-Length", str(len(authenticated_bytes)))
+					self.end_headers()
+					self.wfile.write(authenticated_bytes)
 			finally:
 				print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: disposing client messenger")
 				client_authentication_manager_client_messenger.dispose()
@@ -316,19 +325,28 @@ def get_openid_connect_http_request_handler(*, client_authentication_manager_cli
 
 class OpenidConnectRedirectHttpServer():
 
-	def __init__(self, *, listen_port: int, client_authentication_manager_client_messenger_factory: ClientMessengerFactory):
+	def __init__(self, *, listen_port: int, client_authentication_manager_client_messenger_factory: ClientMessengerFactory, authenticated_html_file_path: str, favicon_file_path: str):
 
 		self.__listen_port = listen_port
 		self.__client_authentication_manager_client_messenger_factory = client_authentication_manager_client_messenger_factory
+		self.__authenticated_html_file_path = authenticated_html_file_path
+		self.__favicon_file_path = favicon_file_path
 
 		self.__http_server = None  # type: http.server.HTTPServer
 
 	def start(self):
 
+		with open(self.__authenticated_html_file_path, "rb") as file_handle:
+			authenticated_bytes = file_handle.read()
+		with open(self.__favicon_file_path, "rb") as file_handle:
+			favicon_bytes = file_handle.read()
+
 		self.__http_server = http.server.HTTPServer(
 			server_address=('', self.__listen_port),
 			RequestHandlerClass=get_openid_connect_http_request_handler(
-				client_authentication_manager_client_messenger_factory=self.__client_authentication_manager_client_messenger_factory
+				client_authentication_manager_client_messenger_factory=self.__client_authentication_manager_client_messenger_factory,
+				authenticated_bytes=authenticated_bytes,
+				favicon_bytes=favicon_bytes
 			)
 		)
 		self.__http_server.serve_forever()
@@ -381,16 +399,19 @@ class ClientAuthenticationStructure(Structure):
 			scope=self.__openid_authentication_configuration.get_scope(),
 			redirect_uri=self.__openid_authentication_configuration.get_redirect_url()
 		)
-		oauth2_url, oauth2_state = provider.authorization_url(
-			url=self.__openid_authentication_configuration.get_authentication_url(),
-			nonce=self.__expected_response_nonce
-		)
-		self.__oauth2_state = oauth2_state
+		try:
+			oauth2_url, oauth2_state = provider.authorization_url(
+				url=self.__openid_authentication_configuration.get_authentication_url(),
+				nonce=self.__expected_response_nonce
+			)
+			self.__oauth2_state = oauth2_state
 
-		# the HTTP server should be up and running already to receive redirect responses
+			# the HTTP server should be up and running already to receive redirect responses
 
-		# TODO open browser locally given the oauth2_url
-		webbrowser.open(oauth2_url, new=2)
+			# TODO open browser locally given the oauth2_url
+			webbrowser.open(oauth2_url, new=2)
+		finally:
+			provider.close()
 
 	def __client_authentication_response_received(self, structure_influence: StructureInfluence):
 		openid_authentication_response = structure_influence.get_client_server_message()  # type: OpenidAuthenticationResponseClientServerMessage
@@ -403,49 +424,53 @@ class ClientAuthenticationStructure(Structure):
 				redirect_uri=self.__openid_authentication_configuration.get_redirect_url(),
 				state=self.__oauth2_state
 			)
-			fetch_token_response = provider.fetch_token(
-				token_url=self.__openid_authentication_configuration.get_token_url(),
-				code=openid_authentication_response.get_code(),
-				client_secret=self.__openid_authentication_configuration.get_client_secret()
-			)
 
-			print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: fetch_token_response: {fetch_token_response}")
-
-			self.__access_token = fetch_token_response["access_token"]
-
-			jwt_pubkeys = requests.get(self.__openid_authentication_configuration.get_jwt_pubkey_url()).json()
-
-			print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: jwt_pubkeys: {jwt_pubkeys}")
-
-			print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: get_algorithm: {self.__openid_authentication_configuration.get_algorithm()}")
-
-			claims = jwt.decode(
-				token=fetch_token_response["id_token"],
-				key=jwt_pubkeys,
-				issuer=self.__openid_authentication_configuration.get_expected_issuer_url(),
-				audience=self.__openid_authentication_configuration.get_client_id(),
-				algorithms=[self.__openid_authentication_configuration.get_algorithm()],
-				access_token=self.__access_token
-			)
-
-			if claims["nonce"] == self.__expected_response_nonce:
-				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Found nonce")
-				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Google user ID: {claims['sub']}")
-				self.set_state(
-					structure_state=ClientAuthenticationStructureStateEnum.ClientAuthenticationSuccessful
+			try:
+				fetch_token_response = provider.fetch_token(
+					token_url=self.__openid_authentication_configuration.get_token_url(),
+					code=openid_authentication_response.get_code(),
+					client_secret=self.__openid_authentication_configuration.get_client_secret()
 				)
-				self.process_response(
-					client_server_message=AuthenticationResponseClientServerMessage(
-						is_successful=True,
-						destination_uuid=self.__client_uuid,
-						external_client_id=claims["sub"]
+
+				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: fetch_token_response: {fetch_token_response}")
+
+				self.__access_token = fetch_token_response["access_token"]
+
+				jwt_pubkeys = requests.get(self.__openid_authentication_configuration.get_jwt_pubkey_url()).json()
+
+				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: jwt_pubkeys: {jwt_pubkeys}")
+
+				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: get_algorithm: {self.__openid_authentication_configuration.get_algorithm()}")
+
+				claims = jwt.decode(
+					token=fetch_token_response["id_token"],
+					key=jwt_pubkeys,
+					issuer=self.__openid_authentication_configuration.get_expected_issuer_url(),
+					audience=self.__openid_authentication_configuration.get_client_id(),
+					algorithms=[self.__openid_authentication_configuration.get_algorithm()],
+					access_token=self.__access_token
+				)
+
+				if claims["nonce"] == self.__expected_response_nonce:
+					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Found nonce")
+					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Google user ID: {claims['sub']}")
+					self.set_state(
+						structure_state=ClientAuthenticationStructureStateEnum.ClientAuthenticationSuccessful
 					)
-				)
-			else:
-				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Nonce mismatch: Actual: {claims['nonce']} != Expected: {self.__expected_response_nonce}")
-				self.set_state(
-					structure_state=ClientAuthenticationStructureStateEnum.ClientAuthenticationFailure
-				)
+					self.process_response(
+						client_server_message=AuthenticationResponseClientServerMessage(
+							is_successful=True,
+							destination_uuid=self.__client_uuid,
+							external_client_id=claims["sub"]
+						)
+					)
+				else:
+					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Nonce mismatch: Actual: {claims['nonce']} != Expected: {self.__expected_response_nonce}")
+					self.set_state(
+						structure_state=ClientAuthenticationStructureStateEnum.ClientAuthenticationFailure
+					)
+			finally:
+				provider.close()
 		else:
 			print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: state mismatch: Actual {oauth2_state} != Expected {self.__oauth2_state}.")
 

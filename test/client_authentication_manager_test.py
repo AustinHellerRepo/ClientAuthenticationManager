@@ -143,7 +143,9 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 				http_server = OpenidConnectRedirectHttpServer(
 					listen_port=get_default_http_server_port(),
-					client_authentication_manager_client_messenger_factory=get_default_client_messenger_factory()
+					client_authentication_manager_client_messenger_factory=get_default_client_messenger_factory(),
+					authenticated_html_file_path="../resources/authenticated.html",
+					favicon_file_path="../resources/favicon.ico"
 				)
 				print(f"{datetime.utcnow()}: test: http_server_thread_method: http_server.start()")
 				http_server.start()
