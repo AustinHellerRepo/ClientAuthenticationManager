@@ -188,7 +188,9 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 		print(f"{datetime.utcnow()}: test: waiting for response so APPROVE ACCESS NOW")
 
-		time.sleep(5)
+		for index in range(5):
+			print(f"{5 - index}...")
+			time.sleep(1)
 
 		print(f"{datetime.utcnow()}: test: client_messenger.dispose()")
 
@@ -207,6 +209,107 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 		http_server.stop()
 
 		time.sleep(1)
+
+		print(f"{datetime.utcnow()}: test: http_server_thread.join()")
+
+		http_server_thread.join()
+
+		print(f"{datetime.utcnow()}: test: HTTP server thread: stopped")
+
+		if found_exception is not None:
+			raise found_exception
+
+		self.assertEqual(1, callback_total)
+
+	def test_request_authentication_and_stop_immediately(self):
+
+		server_messenger = get_default_server_messenger_factory().get_server_messenger()
+
+		server_messenger.start_receiving_from_clients()
+
+		time.sleep(1)
+
+		client_messenger = get_default_client_messenger_factory().get_client_messenger()
+
+		client_messenger.connect_to_server()
+
+		time.sleep(1)
+
+		# start the HTTP Server
+
+		http_server = None  # type: OpenidConnectRedirectHttpServer
+
+		def http_server_thread_method():
+			nonlocal http_server
+
+			try:
+				print(f"{datetime.utcnow()}: test: http_server_thread_method: start")
+
+				http_server = OpenidConnectRedirectHttpServer(
+					listen_port=get_default_http_server_port(),
+					client_authentication_manager_client_messenger_factory=get_default_client_messenger_factory(),
+					authenticated_html_file_path="../resources/authenticated.html",
+					favicon_file_path="../resources/favicon.ico"
+				)
+				print(f"{datetime.utcnow()}: test: http_server_thread_method: http_server.start()")
+				http_server.start()
+			except Exception as ex:
+				print(f"{datetime.utcnow()}: test: http_server_thread_method: ex: {ex}")
+			finally:
+				print(f"{datetime.utcnow()}: test: http_server_thread_method: end")
+
+		http_server_thread = start_thread(http_server_thread_method)
+
+		time.sleep(1)
+
+		# send the authentication request message
+
+		callback_total = 0
+		authentication_response_client_server_message = None  # type: AuthenticationResponseClientServerMessage
+
+		def callback(client_server_message: ClientAuthenticationClientServerMessage):
+			nonlocal callback_total
+			nonlocal authentication_response_client_server_message
+
+			callback_total += 1
+			print(f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
+			self.assertIsInstance(client_server_message, AuthenticationResponseClientServerMessage)
+			authentication_response_client_server_message = client_server_message
+
+		found_exception = None
+
+		def on_exception(exception: Exception):
+			nonlocal found_exception
+			if found_exception is None:
+				found_exception = exception
+
+		client_messenger.receive_from_server(
+			callback=callback,
+			on_exception=on_exception
+		)
+
+		client_messenger.send_to_server(
+			request_client_server_message=OpenidAuthenticationRequestClientServerMessage()
+		)
+
+		# wait for authentication response message
+
+		print(f"{datetime.utcnow()}: test: waiting for response so APPROVE ACCESS NOW")
+
+		while authentication_response_client_server_message is None:
+			time.sleep(0.1)
+
+		print(f"{datetime.utcnow()}: test: client_messenger.dispose()")
+
+		client_messenger.dispose()
+
+		print(f"{datetime.utcnow()}: test: server_messenger.stop_receiving_from_clients()")
+
+		server_messenger.stop_receiving_from_clients()
+
+		print(f"{datetime.utcnow()}: test: http_server.stop()")
+
+		http_server.stop()
 
 		print(f"{datetime.utcnow()}: test: http_server_thread.join()")
 
