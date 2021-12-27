@@ -1,0 +1,10 @@
+LICENSE
+pyproject.toml
+setup.cfg
+src/austin_heller_repo/__init__.py
+src/austin_heller_repo/client_authentication_manager.py
+src/client_authentication_manager_austinhellerrepo.egg-info/PKG-INFO
+src/client_authentication_manager_austinhellerrepo.egg-info/SOURCES.txt
+src/client_authentication_manager_austinhellerrepo.egg-info/dependency_links.txt
+src/client_authentication_manager_austinhellerrepo.egg-info/requires.txt
+src/client_authentication_manager_austinhellerrepo.egg-info/top_level.txt
