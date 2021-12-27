@@ -19,4 +19,4 @@ pip-wheel-metadata/
 share/python-wheels/
 MANIFEST
 geckodriver.log
-test/settings.ini
+test/client_settings.ini

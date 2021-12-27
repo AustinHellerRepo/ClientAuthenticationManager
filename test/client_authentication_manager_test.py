@@ -13,26 +13,41 @@ from austin_heller_repo.common import HostPointer
 
 def get_default_openid_authentication_configuration() -> OpenidAuthenticationConfiguration:
 	config = configparser.ConfigParser()
-	config.read("./settings.ini")
-	oauth_config = config["OAuth"]
+	config.read("./oauth_settings.ini")
+
+	google_config = config["Google"]
+	authentication_url = google_config["AuthorizationUrl"]
+	token_url = google_config["TokenUrl"]
+	scope = google_config["Scope"].split(",")
+	redirect_url = google_config["RedirectUrl"]
+	redirect_port = google_config["RedirectPort"]
+	jwt_pubkey_url = google_config["JwtPubKeyUrl"]
+	expected_issuer_url = google_config["ExpectedIssuerUrl"]
+	algorithm = google_config["Algorithm"]
+
+	config.read("./client_settings.ini")
+	client_credentials_config = config["ClientCredentials"]
+	client_id = client_credentials_config["ClientId"]
+	client_secret = client_credentials_config["ClientSecret"]
+
 	return OpenidAuthenticationConfiguration(
-		client_id=oauth_config["ClientId"],
-		client_secret=oauth_config["ClientSecret"],
-		authentication_url=oauth_config["AuthorizationUrl"],
-		token_url=oauth_config["TokenUrl"],
-		scope=oauth_config["Scope"].split(","),
-		redirect_url=oauth_config["RedirectUrl"],
-		redirect_port=oauth_config["RedirectPort"],
-		jwt_pubkey_url=oauth_config["JwtPubKeyUrl"],
-		expected_issuer_url=oauth_config["ExpectedIssuerUrl"],
-		algorithm=oauth_config["Algorithm"]
+		client_id=client_id,
+		client_secret=client_secret,
+		authentication_url=authentication_url,
+		token_url=token_url,
+		scope=scope,
+		redirect_url=redirect_url,
+		redirect_port=redirect_port,
+		jwt_pubkey_url=jwt_pubkey_url,
+		expected_issuer_url=expected_issuer_url,
+		algorithm=algorithm
 	)
 
 
 def get_default_http_server_port() -> int:
 	config = configparser.ConfigParser()
-	config.read("./settings.ini")
-	oauth_config = config["OAuth"]
+	config.read("./oauth_settings.ini")
+	oauth_config = config["Google"]
 	return int(oauth_config["RedirectPort"])
 
 
