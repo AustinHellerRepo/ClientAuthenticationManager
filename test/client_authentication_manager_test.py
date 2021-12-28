@@ -4,7 +4,7 @@ import configparser
 import time
 from datetime import datetime
 import uuid
-from src.austin_heller_repo.client_authentication_manager import ClientAuthenticationClientServerMessage, OpenidAuthenticationRequestClientServerMessage, OpenidAuthenticationConfiguration, ClientAuthenticationManagerStructureFactory, OpenidConnectRedirectHttpServer, AuthenticationResponseClientServerMessage, UrlNavigationNeededResponseClientServerMessage
+from src.austin_heller_repo.client_authentication_manager import ClientAuthenticationClientServerMessage, OpenidAuthenticationRequestClientServerMessage, OpenidAuthenticationConfiguration, ClientAuthenticationManagerStructureFactory, OpenidConnectRedirectHttpServer, AuthenticationResponseClientServerMessage, UrlNavigationNeededResponseClientServerMessage, ClientAuthenticationManager
 from austin_heller_repo.socket_queued_message_framework import ServerMessengerFactory, ClientMessengerFactory
 from austin_heller_repo.socket import ServerSocketFactory, ClientSocketFactory
 from austin_heller_repo.threading import SingletonMemorySequentialQueueFactory, Semaphore, start_thread
@@ -80,6 +80,12 @@ def get_default_client_messenger_factory() -> ClientMessengerFactory:
 			host_port=35461
 		),
 		client_server_message_class=ClientAuthenticationClientServerMessage
+	)
+
+
+def get_default_client_authentication_manager() -> ClientAuthenticationManager:
+	return ClientAuthenticationManager(
+		client_authentication_client_messenger_factory=get_default_client_messenger_factory()
 	)
 
 
@@ -335,3 +341,64 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			raise found_exception
 
 		self.assertEqual(2, callback_total)
+
+	def test_client_authentication_manager(self):
+
+		server_messenger = get_default_server_messenger_factory().get_server_messenger()
+
+		server_messenger.start_receiving_from_clients()
+
+		time.sleep(1)
+
+		# start the HTTP Server
+
+		http_server = None  # type: OpenidConnectRedirectHttpServer
+
+		def http_server_thread_method():
+			nonlocal http_server
+
+			try:
+				print(f"{datetime.utcnow()}: test: http_server_thread_method: start")
+
+				http_server = OpenidConnectRedirectHttpServer(
+					listen_port=get_default_http_server_port(),
+					client_authentication_manager_client_messenger_factory=get_default_client_messenger_factory(),
+					authenticated_html_file_path="../resources/authenticated.html",
+					favicon_file_path="../resources/favicon.ico"
+				)
+				print(f"{datetime.utcnow()}: test: http_server_thread_method: http_server.start()")
+				http_server.start()
+			except Exception as ex:
+				print(f"{datetime.utcnow()}: test: http_server_thread_method: ex: {ex}")
+			finally:
+				print(f"{datetime.utcnow()}: test: http_server_thread_method: end")
+
+		http_server_thread = start_thread(http_server_thread_method)
+
+		time.sleep(1)
+
+		# this is the start of the actual test
+
+		client_authentication_manager = get_default_client_authentication_manager()
+
+		is_authenticated = client_authentication_manager.authenticate_client(
+			timeout_seconds=5
+		)
+
+		# this is the end of the actual test
+
+		print(f"{datetime.utcnow()}: test: server_messenger.stop_receiving_from_clients()")
+
+		server_messenger.stop_receiving_from_clients()
+
+		print(f"{datetime.utcnow()}: test: http_server.stop()")
+
+		http_server.stop()
+
+		print(f"{datetime.utcnow()}: test: http_server_thread.join()")
+
+		http_server_thread.join()
+
+		print(f"{datetime.utcnow()}: test: HTTP server thread: stopped")
+
+		self.assertTrue(is_authenticated)

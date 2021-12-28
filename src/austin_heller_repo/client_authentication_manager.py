@@ -5,8 +5,9 @@ import tempfile
 import time
 import json
 from datetime import datetime
+from abc import ABC, abstractmethod
 from urllib.parse import urlparse, parse_qs
-from austin_heller_repo.threading import Semaphore
+from austin_heller_repo.threading import Semaphore, TimeoutThread
 from austin_heller_repo.socket_queued_message_framework import Structure, StructureStateEnum, ClientServerMessageTypeEnum, ClientServerMessage, StructureInfluence, StructureTransitionException, ClientMessengerFactory, ServerMessengerFactory, ClientMessenger, ServerMessenger, StructureFactory
 from jose import jwt
 import requests
@@ -35,7 +36,7 @@ class ClientAuthenticationManagerStructureStateEnum(StructureStateEnum):
 	Active = "active"
 
 
-class ClientAuthenticationClientServerMessage(ClientServerMessage):
+class ClientAuthenticationClientServerMessage(ClientServerMessage, ABC):
 
 	def __init__(self):
 		super().__init__()
@@ -307,7 +308,7 @@ class OpenidAuthenticationConfiguration():
 		return self.__algorithm
 
 
-def get_openid_connect_http_request_handler(*, client_authentication_manager_client_messenger_factory: ClientMessengerFactory, authenticated_bytes: bytes, favicon_bytes: bytes):
+def get_openid_connect_http_request_handler(*, client_authentication_manager_client_messenger_factory: ClientMessengerFactory, authenticated_bytes: bytes, favicon_bytes: bytes, is_debug: bool = False):
 	class OpenidConnectHttpRequestHandler(http.server.BaseHTTPRequestHandler):
 
 		__states_sent_via_client_messenger = set()  # type: Set[str]
@@ -321,9 +322,10 @@ def get_openid_connect_http_request_handler(*, client_authentication_manager_cli
 			self.__server = server
 
 		def do_GET(self):
-			print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: start")
-			print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: self.path: {self.path}")
-			print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: self.request: {self.request}")
+			if is_debug:
+				print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: start")
+				print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: self.path: {self.path}")
+				print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: self.request: {self.request}")
 			client_authentication_manager_client_messenger = client_authentication_manager_client_messenger_factory.get_client_messenger()
 			try:
 				if self.path == "/favicon.ico":
@@ -335,22 +337,27 @@ def get_openid_connect_http_request_handler(*, client_authentication_manager_cli
 					url_query = urlparse(self.path).query
 					url_query_dict = parse_qs(url_query)
 					state = url_query_dict["state"][0]
-					print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: state: {state}")
+					if is_debug:
+						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: state: {state}")
 
 					OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger_semaphore.acquire()
 					if state not in OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger:
-						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: adding state")
+						if is_debug:
+							print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: adding state")
 						OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger.add(state)
 						is_send_via_client_messenger_required = True
 					else:
-						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: already processed state")
+						if is_debug:
+							print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: already processed state")
 						is_send_via_client_messenger_required = False
 					OpenidConnectHttpRequestHandler.__states_sent_via_client_messenger_semaphore.release()
 					if is_send_via_client_messenger_required:
 						code = url_query_dict["code"][0]
-						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: connecting to server")
+						if is_debug:
+							print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: connecting to server")
 						client_authentication_manager_client_messenger.connect_to_server()
-						print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: sending to server")
+						if is_debug:
+							print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: sending to server")
 						client_authentication_manager_client_messenger.send_to_server(
 							request_client_server_message=OpenidAuthenticationResponseClientServerMessage(
 								state=state,
@@ -362,9 +369,11 @@ def get_openid_connect_http_request_handler(*, client_authentication_manager_cli
 					self.end_headers()
 					self.wfile.write(authenticated_bytes)
 			finally:
-				print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: disposing client messenger")
+				if is_debug:
+					print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: disposing client messenger")
 				client_authentication_manager_client_messenger.dispose()
-			print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: end")
+				if is_debug:
+					print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: end")
 	return OpenidConnectHttpRequestHandler
 
 
@@ -593,3 +602,76 @@ class ClientAuthenticationManagerStructureFactory(StructureFactory):
 		return ClientAuthenticationManagerStructure(
 			openid_authentication_configuration=self.__openid_authentication_configuration
 		)
+
+
+class ClientAuthenticationManager():
+
+	def __init__(self, *, client_authentication_client_messenger_factory: ClientMessengerFactory):
+
+		self.__client_authentication_client_messenger_factory = client_authentication_client_messenger_factory
+
+	def authenticate_client(self, *, timeout_seconds: float) -> bool:
+
+		authentication_response_client_server_message = None  # type: AuthenticationResponseClientServerMessage
+		authentication_response_client_server_message_blocking_semaphore = Semaphore()
+		authentication_response_client_server_message_blocking_semaphore.acquire()
+		found_exception = None  # type: Exception
+
+		def timeout_thread_method():
+			nonlocal authentication_response_client_server_message
+			nonlocal authentication_response_client_server_message_blocking_semaphore
+			nonlocal found_exception
+
+			client_authentication_client_messenger = self.__client_authentication_client_messenger_factory.get_client_messenger()
+
+			client_authentication_client_messenger.connect_to_server()
+
+			def callback(client_server_message: ClientAuthenticationClientServerMessage):
+				nonlocal authentication_response_client_server_message
+
+				if isinstance(client_server_message, UrlNavigationNeededResponseClientServerMessage):
+					client_server_message.navigate_to_url()
+				elif isinstance(client_server_message, AuthenticationResponseClientServerMessage):
+					authentication_response_client_server_message = client_server_message  # store the message so that the null check will fail
+					authentication_response_client_server_message_blocking_semaphore.release()
+				else:
+					raise Exception(f"Unexpected client message type: {client_server_message.__class__.get_client_server_message_type()}")
+
+			def on_exception(exception: Exception):
+				nonlocal found_exception
+				if found_exception is None:
+					found_exception = exception
+
+			client_authentication_client_messenger.receive_from_server(
+				callback=callback,
+				on_exception=on_exception
+			)
+
+			client_authentication_client_messenger.send_to_server(
+				request_client_server_message=OpenidAuthenticationRequestClientServerMessage()
+			)
+
+			print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: acquiring")
+			authentication_response_client_server_message_blocking_semaphore.acquire()
+			print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: acquired")
+			authentication_response_client_server_message_blocking_semaphore.release()
+
+			client_authentication_client_messenger.dispose()
+
+		timeout_thread = TimeoutThread(
+			target=timeout_thread_method,
+			timeout_seconds=timeout_seconds
+		)
+		timeout_thread.start()
+
+		if not timeout_thread.try_wait():
+			authentication_response_client_server_message_blocking_semaphore.release()
+
+		print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: try_join: start")
+		timeout_thread.try_join()
+		print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: try_join: end")
+
+		if authentication_response_client_server_message is None:
+			return False
+		else:
+			return authentication_response_client_server_message.is_successful()
