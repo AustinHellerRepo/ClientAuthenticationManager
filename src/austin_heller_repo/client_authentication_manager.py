@@ -50,10 +50,13 @@ class ClientAuthenticationClientServerMessage(ClientServerMessage, ABC):
 
 class OpenidAuthenticationRequestClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
-	def __init__(self):
+	def __init__(self, *, external_client_id: str):
 		super().__init__()
 
-		pass
+		self.__external_client_id = external_client_id
+
+	def get_external_client_id(self) -> str:
+		return self.__external_client_id
 
 	@classmethod
 	def get_client_server_message_type(cls) -> ClientServerMessageTypeEnum:
@@ -61,6 +64,7 @@ class OpenidAuthenticationRequestClientAuthenticationClientServerMessage(ClientA
 
 	def to_json(self) -> Dict:
 		json_object = super().to_json()
+		json_object["external_client_id"] = self.__external_client_id
 		return json_object
 
 	def is_response(self) -> bool:
@@ -174,18 +178,22 @@ class OpenidAuthenticationResponseClientAuthenticationClientServerMessage(Client
 
 class AuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
-	def __init__(self, *, is_successful: bool, destination_uuid: str, external_client_id: str):
+	def __init__(self, *, is_successful: bool, destination_uuid: str, external_client_id: str, authentication_id: str):
 		super().__init__()
 
 		self.__is_successful = is_successful
 		self.__destination_uuid = destination_uuid
 		self.__external_client_id = external_client_id
+		self.__authentication_id = authentication_id
 
 	def is_successful(self) -> bool:
 		return self.__is_successful
 
 	def get_external_client_id(self) -> str:
 		return self.__external_client_id
+
+	def get_authentication_id(self) -> str:
+		return self.__authentication_id
 
 	@classmethod
 	def get_client_server_message_type(cls) -> ClientServerMessageTypeEnum:
@@ -196,6 +204,7 @@ class AuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthen
 		json_object["is_successful"] = self.__is_successful
 		json_object["destination_uuid"] = self.__destination_uuid
 		json_object["external_client_id"] = self.__external_client_id
+		json_object["authentication_id"] = self.__authentication_id
 		return json_object
 
 	def is_response(self) -> bool:
@@ -413,7 +422,7 @@ class OpenidConnectRedirectHttpServer():
 
 class ClientAuthenticationStructure(Structure):
 
-	def __init__(self, *, openid_authentication_configuration: OpenidAuthenticationConfiguration, client_uuid: str):
+	def __init__(self, *, openid_authentication_configuration: OpenidAuthenticationConfiguration, client_uuid: str, external_client_id: str):
 		super().__init__(
 			states=ClientAuthenticationStructureStateEnum,
 			initial_state=ClientAuthenticationStructureStateEnum.ClientUnauthenticated
@@ -421,6 +430,7 @@ class ClientAuthenticationStructure(Structure):
 
 		self.__openid_authentication_configuration = openid_authentication_configuration
 		self.__client_uuid = client_uuid
+		self.__external_client_id = external_client_id
 
 		self.__expected_response_nonce = None  # type: str
 		self.__oauth2_state = None  # type: str
@@ -519,7 +529,8 @@ class ClientAuthenticationStructure(Structure):
 						client_server_message=AuthenticationResponseClientAuthenticationClientServerMessage(
 							is_successful=True,
 							destination_uuid=self.__client_uuid,
-							external_client_id=claims["sub"]
+							external_client_id=self.__external_client_id,
+							authentication_id=claims["sub"]
 						)
 					)
 				else:
@@ -543,8 +554,8 @@ class ClientAuthenticationManagerStructure(Structure):
 
 		self.__openid_authentication_configuration = openid_authentication_configuration
 
-		self.__client_authentication_structure_per_client_uuid = {}  # type: Dict[str, ClientAuthenticationStructure]
-		self.__client_authentication_structure_per_client_uuid_semphore = Semaphore()
+		self.__client_authentication_structure_per_external_client_id = {}  # type: Dict[str, ClientAuthenticationStructure]
+		self.__client_authentication_structure_per_external_client_id_semaphore = Semaphore()
 
 		self.add_transition(
 			client_server_message_type=ClientAuthenticationClientServerMessageTypeEnum.OpenidAuthenticationRequest,
@@ -562,33 +573,35 @@ class ClientAuthenticationManagerStructure(Structure):
 
 	def __openid_authentication_requested(self, structure_influence: StructureInfluence):
 		openid_authentication_request = structure_influence.get_client_server_message()  # type: OpenidAuthenticationRequestClientAuthenticationClientServerMessage
+		external_client_id = openid_authentication_request.get_external_client_id()
 		client_uuid = structure_influence.get_source_uuid()
-		self.__client_authentication_structure_per_client_uuid_semphore.acquire()
-		if client_uuid not in self.__client_authentication_structure_per_client_uuid:
+		self.__client_authentication_structure_per_external_client_id_semaphore.acquire()
+		if external_client_id not in self.__client_authentication_structure_per_external_client_id:
 			client_authentication_structure = ClientAuthenticationStructure(
 				openid_authentication_configuration=self.__openid_authentication_configuration,
-				client_uuid=client_uuid
+				client_uuid=client_uuid,
+				external_client_id=external_client_id
 			)
 			self.register_child_structure(
 				structure=client_authentication_structure
 			)
-			self.__client_authentication_structure_per_client_uuid[client_uuid] = client_authentication_structure
-		self.__client_authentication_structure_per_client_uuid_semphore.release()
-		self.__client_authentication_structure_per_client_uuid[client_uuid].update_structure(
+			self.__client_authentication_structure_per_external_client_id[external_client_id] = client_authentication_structure
+		self.__client_authentication_structure_per_external_client_id_semaphore.release()
+		self.__client_authentication_structure_per_external_client_id[external_client_id].update_structure(
 			structure_influence=structure_influence
 		)
 
 	def __openid_authentication_response_received(self, structure_influence: StructureInfluence):
 		openid_authentication_response = structure_influence.get_client_server_message()  # type: OpenidAuthenticationResponseClientAuthenticationClientServerMessage
-		self.__client_authentication_structure_per_client_uuid_semphore.acquire()
-		for client_uuid in self.__client_authentication_structure_per_client_uuid.keys():
-			client_authentication_structure = self.__client_authentication_structure_per_client_uuid[client_uuid]
+		self.__client_authentication_structure_per_external_client_id_semaphore.acquire()
+		for external_client_id in self.__client_authentication_structure_per_external_client_id.keys():
+			client_authentication_structure = self.__client_authentication_structure_per_external_client_id[external_client_id]
 			if client_authentication_structure.get_oauth2_state() == openid_authentication_response.get_state():
 				client_authentication_structure.update_structure(
 					structure_influence=structure_influence
 				)
 				break
-		self.__client_authentication_structure_per_client_uuid_semphore.release()
+		self.__client_authentication_structure_per_external_client_id_semaphore.release()
 
 
 class ClientAuthenticationManagerStructureFactory(StructureFactory):
@@ -648,7 +661,9 @@ class ClientAuthenticationManager():
 			)
 
 			client_authentication_client_messenger.send_to_server(
-				request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage()
+				request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage(
+					external_client_id=None
+				)
 			)
 
 			print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: acquiring")

@@ -167,9 +167,11 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 		# send the authentication request message
 
 		callback_total = 0
+		authentication_response_client_server_message = None  # type: AuthenticationResponseClientAuthenticationClientServerMessage
 
 		def callback(client_server_message: ClientAuthenticationClientServerMessage):
 			nonlocal callback_total
+			nonlocal authentication_response_client_server_message
 
 			callback_total += 1
 			print(
@@ -179,6 +181,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 				client_server_message.navigate_to_url()
 			elif callback_total == 2:
 				self.assertIsInstance(client_server_message, AuthenticationResponseClientAuthenticationClientServerMessage)
+				authentication_response_client_server_message = client_server_message
 			else:
 				raise Exception(f"Unexpected callback total: {callback_total}")
 
@@ -194,8 +197,12 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			on_exception=on_exception
 		)
 
+		expected_external_client_id = str(uuid.uuid4())
+
 		client_messenger.send_to_server(
-			request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage()
+			request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage(
+				external_client_id=expected_external_client_id
+			)
 		)
 
 		# wait for authentication response message
@@ -234,6 +241,8 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			raise found_exception
 
 		self.assertEqual(2, callback_total)
+		self.assertIsNotNone(authentication_response_client_server_message)
+		self.assertEqual(expected_external_client_id, authentication_response_client_server_message.get_external_client_id())
 
 	def test_request_authentication_and_stop_immediately(self):
 
@@ -308,8 +317,12 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			on_exception=on_exception
 		)
 
+		expected_external_client_id = str(uuid.uuid4())
+
 		client_messenger.send_to_server(
-			request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage()
+			request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage(
+				external_client_id=expected_external_client_id
+			)
 		)
 
 		# wait for authentication response message
@@ -341,6 +354,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			raise found_exception
 
 		self.assertEqual(2, callback_total)
+		self.assertEqual(expected_external_client_id, authentication_response_client_server_message.get_external_client_id())
 
 	def test_client_authentication_manager(self):
 
