@@ -25,6 +25,7 @@ class ClientAuthenticationStructureStateEnum(StructureStateEnum):
 
 class ClientAuthenticationClientServerMessageTypeEnum(ClientServerMessageTypeEnum):
 	OpenidAuthenticationRequest = "openid_authentication_request"
+	UrlNavigationNeededResponse = "url_navigation_needed_response"
 	OpenidAuthenticationResponse = "openid_authentication_response"
 	AuthenticationResponse = "authentication_response"
 	UnexpectedAuthenticationRequest = "unexpected_authentication_request"
@@ -69,6 +70,50 @@ class OpenidAuthenticationRequestClientServerMessage(ClientAuthenticationClientS
 
 	def is_structural_influence(self) -> bool:
 		return True
+
+	def is_ordered(self) -> bool:
+		return True
+
+	def get_structural_error_client_server_message_response(self, *, structure_transition_exception: StructureTransitionException, destination_uuid: str) -> ClientServerMessage:
+		return UnexpectedAuthenticationRequestClientServerMessage(
+			structure_state_name=structure_transition_exception.get_structure_state().value,
+			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
+			destination_uuid=destination_uuid
+		)
+
+
+class UrlNavigationNeededResponseClientServerMessage(ClientAuthenticationClientServerMessage):
+
+	def __init__(self, *, url: str, destination_uuid: str):
+		super().__init__()
+
+		self.__url = url
+		self.__destination_uuid = destination_uuid
+
+	def get_url(self) -> str:
+		return self.__url
+
+	def navigate_to_url(self):
+		webbrowser.open(self.__url, new=2)
+
+	@classmethod
+	def get_client_server_message_type(cls) -> ClientServerMessageTypeEnum:
+		return ClientAuthenticationClientServerMessageTypeEnum.UrlNavigationNeededResponse
+
+	def to_json(self) -> Dict:
+		json_object = super().to_json()
+		json_object["url"] = self.__url
+		json_object["destination_uuid"] = self.__destination_uuid
+		return json_object
+
+	def is_response(self) -> bool:
+		return True
+
+	def get_destination_uuid(self) -> str:
+		return self.__destination_uuid
+
+	def is_structural_influence(self) -> bool:
+		return False
 
 	def is_ordered(self) -> bool:
 		return True
@@ -408,8 +453,12 @@ class ClientAuthenticationStructure(Structure):
 
 			# the HTTP server should be up and running already to receive redirect responses
 
-			# TODO open browser locally given the oauth2_url
-			webbrowser.open(oauth2_url, new=2)
+			self.send_response(
+				client_server_message=UrlNavigationNeededResponseClientServerMessage(
+					url=oauth2_url,
+					destination_uuid=self.__client_uuid
+				)
+			)
 		finally:
 			provider.close()
 
@@ -457,7 +506,7 @@ class ClientAuthenticationStructure(Structure):
 					self.set_state(
 						structure_state=ClientAuthenticationStructureStateEnum.ClientAuthenticationSuccessful
 					)
-					self.process_response(
+					self.send_response(
 						client_server_message=AuthenticationResponseClientServerMessage(
 							is_successful=True,
 							destination_uuid=self.__client_uuid,

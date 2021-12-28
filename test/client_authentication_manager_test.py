@@ -4,7 +4,7 @@ import configparser
 import time
 from datetime import datetime
 import uuid
-from src.austin_heller_repo.client_authentication_manager import ClientAuthenticationClientServerMessage, OpenidAuthenticationRequestClientServerMessage, OpenidAuthenticationConfiguration, ClientAuthenticationManagerStructureFactory, OpenidConnectRedirectHttpServer, AuthenticationResponseClientServerMessage
+from src.austin_heller_repo.client_authentication_manager import ClientAuthenticationClientServerMessage, OpenidAuthenticationRequestClientServerMessage, OpenidAuthenticationConfiguration, ClientAuthenticationManagerStructureFactory, OpenidConnectRedirectHttpServer, AuthenticationResponseClientServerMessage, UrlNavigationNeededResponseClientServerMessage
 from austin_heller_repo.socket_queued_message_framework import ServerMessengerFactory, ClientMessengerFactory
 from austin_heller_repo.socket import ServerSocketFactory, ClientSocketFactory
 from austin_heller_repo.threading import SingletonMemorySequentialQueueFactory, Semaphore, start_thread
@@ -164,9 +164,17 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 		def callback(client_server_message: ClientAuthenticationClientServerMessage):
 			nonlocal callback_total
+
 			callback_total += 1
-			print(f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
-			self.assertIsInstance(client_server_message, AuthenticationResponseClientServerMessage)
+			print(
+				f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
+			if callback_total == 1:
+				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientServerMessage)
+				client_server_message.navigate_to_url()
+			elif callback_total == 2:
+				self.assertIsInstance(client_server_message, AuthenticationResponseClientServerMessage)
+			else:
+				raise Exception(f"Unexpected callback total: {callback_total}")
 
 		found_exception = None
 
@@ -219,7 +227,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 		if found_exception is not None:
 			raise found_exception
 
-		self.assertEqual(1, callback_total)
+		self.assertEqual(2, callback_total)
 
 	def test_request_authentication_and_stop_immediately(self):
 
@@ -273,8 +281,14 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 			callback_total += 1
 			print(f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
-			self.assertIsInstance(client_server_message, AuthenticationResponseClientServerMessage)
-			authentication_response_client_server_message = client_server_message
+			if callback_total == 1:
+				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientServerMessage)
+				client_server_message.navigate_to_url()
+			elif callback_total == 2:
+				self.assertIsInstance(client_server_message, AuthenticationResponseClientServerMessage)
+				authentication_response_client_server_message = client_server_message  # store the message so that the null check will fail
+			else:
+				raise Exception(f"Unexpected callback total: {callback_total}")
 
 		found_exception = None
 
@@ -320,4 +334,4 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 		if found_exception is not None:
 			raise found_exception
 
-		self.assertEqual(1, callback_total)
+		self.assertEqual(2, callback_total)
