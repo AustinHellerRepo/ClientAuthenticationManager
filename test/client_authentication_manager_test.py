@@ -4,7 +4,7 @@ import configparser
 import time
 from datetime import datetime
 import uuid
-from src.austin_heller_repo.client_authentication_manager import ClientAuthenticationClientServerMessage, OpenidAuthenticationRequestClientServerMessage, OpenidAuthenticationConfiguration, ClientAuthenticationManagerStructureFactory, OpenidConnectRedirectHttpServer, AuthenticationResponseClientServerMessage, UrlNavigationNeededResponseClientServerMessage, ClientAuthenticationManager
+from src.austin_heller_repo.client_authentication_manager import ClientAuthenticationClientServerMessage, OpenidAuthenticationRequestClientAuthenticationClientServerMessage, OpenidAuthenticationConfiguration, ClientAuthenticationManagerStructureFactory, OpenidConnectRedirectHttpServer, AuthenticationResponseClientAuthenticationClientServerMessage, UrlNavigationNeededResponseClientAuthenticationClientServerMessage, ClientAuthenticationManager
 from austin_heller_repo.socket_queued_message_framework import ServerMessengerFactory, ClientMessengerFactory
 from austin_heller_repo.socket import ServerSocketFactory, ClientSocketFactory
 from austin_heller_repo.threading import SingletonMemorySequentialQueueFactory, Semaphore, start_thread
@@ -175,10 +175,10 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			print(
 				f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
 			if callback_total == 1:
-				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientServerMessage)
+				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientAuthenticationClientServerMessage)
 				client_server_message.navigate_to_url()
 			elif callback_total == 2:
-				self.assertIsInstance(client_server_message, AuthenticationResponseClientServerMessage)
+				self.assertIsInstance(client_server_message, AuthenticationResponseClientAuthenticationClientServerMessage)
 			else:
 				raise Exception(f"Unexpected callback total: {callback_total}")
 
@@ -195,7 +195,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 		)
 
 		client_messenger.send_to_server(
-			request_client_server_message=OpenidAuthenticationRequestClientServerMessage()
+			request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage()
 		)
 
 		# wait for authentication response message
@@ -279,7 +279,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 		# send the authentication request message
 
 		callback_total = 0
-		authentication_response_client_server_message = None  # type: AuthenticationResponseClientServerMessage
+		authentication_response_client_server_message = None  # type: AuthenticationResponseClientAuthenticationClientServerMessage
 
 		def callback(client_server_message: ClientAuthenticationClientServerMessage):
 			nonlocal callback_total
@@ -288,10 +288,10 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			callback_total += 1
 			print(f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
 			if callback_total == 1:
-				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientServerMessage)
+				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientAuthenticationClientServerMessage)
 				client_server_message.navigate_to_url()
 			elif callback_total == 2:
-				self.assertIsInstance(client_server_message, AuthenticationResponseClientServerMessage)
+				self.assertIsInstance(client_server_message, AuthenticationResponseClientAuthenticationClientServerMessage)
 				authentication_response_client_server_message = client_server_message  # store the message so that the null check will fail
 			else:
 				raise Exception(f"Unexpected callback total: {callback_total}")
@@ -309,7 +309,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 		)
 
 		client_messenger.send_to_server(
-			request_client_server_message=OpenidAuthenticationRequestClientServerMessage()
+			request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage()
 		)
 
 		# wait for authentication response message

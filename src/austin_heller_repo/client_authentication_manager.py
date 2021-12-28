@@ -48,7 +48,7 @@ class ClientAuthenticationClientServerMessage(ClientServerMessage, ABC):
 		return ClientAuthenticationClientServerMessageTypeEnum
 
 
-class OpenidAuthenticationRequestClientServerMessage(ClientAuthenticationClientServerMessage):
+class OpenidAuthenticationRequestClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
 	def __init__(self):
 		super().__init__()
@@ -76,14 +76,14 @@ class OpenidAuthenticationRequestClientServerMessage(ClientAuthenticationClientS
 		return True
 
 	def get_structural_error_client_server_message_response(self, *, structure_transition_exception: StructureTransitionException, destination_uuid: str) -> ClientServerMessage:
-		return UnexpectedAuthenticationRequestClientServerMessage(
+		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
 			destination_uuid=destination_uuid
 		)
 
 
-class UrlNavigationNeededResponseClientServerMessage(ClientAuthenticationClientServerMessage):
+class UrlNavigationNeededResponseClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
 	def __init__(self, *, url: str, destination_uuid: str):
 		super().__init__()
@@ -120,14 +120,14 @@ class UrlNavigationNeededResponseClientServerMessage(ClientAuthenticationClientS
 		return True
 
 	def get_structural_error_client_server_message_response(self, *, structure_transition_exception: StructureTransitionException, destination_uuid: str) -> ClientServerMessage:
-		return UnexpectedAuthenticationRequestClientServerMessage(
+		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
 			destination_uuid=destination_uuid
 		)
 
 
-class OpenidAuthenticationResponseClientServerMessage(ClientAuthenticationClientServerMessage):
+class OpenidAuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 	# Purpose: to send a response from the HTTP server that an OpenID Connect response was received for a specific client
 
 	def __init__(self, *, state: str, code: str):  # TODO include data specific to the OpenID Connect response
@@ -165,14 +165,14 @@ class OpenidAuthenticationResponseClientServerMessage(ClientAuthenticationClient
 		return True
 
 	def get_structural_error_client_server_message_response(self, *, structure_transition_exception: StructureTransitionException, destination_uuid: str) -> ClientServerMessage:
-		return UnexpectedAuthenticationRequestClientServerMessage(
+		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
 			destination_uuid=destination_uuid
 		)
 
 
-class AuthenticationResponseClientServerMessage(ClientAuthenticationClientServerMessage):
+class AuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
 	def __init__(self, *, is_successful: bool, destination_uuid: str, external_client_id: str):
 		super().__init__()
@@ -211,14 +211,14 @@ class AuthenticationResponseClientServerMessage(ClientAuthenticationClientServer
 		return True
 
 	def get_structural_error_client_server_message_response(self, *, structure_transition_exception: StructureTransitionException, destination_uuid: str) -> ClientServerMessage:
-		return UnexpectedAuthenticationRequestClientServerMessage(
+		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
 			destination_uuid=destination_uuid
 		)
 
 
-class UnexpectedAuthenticationRequestClientServerMessage(ClientAuthenticationClientServerMessage):
+class UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
 	def __init__(self, *, structure_state_name: str, client_server_message_json_string: str, destination_uuid: str):
 		super().__init__()
@@ -359,7 +359,7 @@ def get_openid_connect_http_request_handler(*, client_authentication_manager_cli
 						if is_debug:
 							print(f"{datetime.utcnow()}: OpenidConnectHttpRequestHandler: do_GET: sending to server")
 						client_authentication_manager_client_messenger.send_to_server(
-							request_client_server_message=OpenidAuthenticationResponseClientServerMessage(
+							request_client_server_message=OpenidAuthenticationResponseClientAuthenticationClientServerMessage(
 								state=state,
 								code=code
 							)
@@ -463,7 +463,7 @@ class ClientAuthenticationStructure(Structure):
 			# the HTTP server should be up and running already to receive redirect responses
 
 			self.send_response(
-				client_server_message=UrlNavigationNeededResponseClientServerMessage(
+				client_server_message=UrlNavigationNeededResponseClientAuthenticationClientServerMessage(
 					url=oauth2_url,
 					destination_uuid=self.__client_uuid
 				)
@@ -472,7 +472,7 @@ class ClientAuthenticationStructure(Structure):
 			provider.close()
 
 	def __client_authentication_response_received(self, structure_influence: StructureInfluence):
-		openid_authentication_response = structure_influence.get_client_server_message()  # type: OpenidAuthenticationResponseClientServerMessage
+		openid_authentication_response = structure_influence.get_client_server_message()  # type: OpenidAuthenticationResponseClientAuthenticationClientServerMessage
 		oauth2_state = openid_authentication_response.get_state()
 		if oauth2_state == self.__oauth2_state:
 			print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Found oauth2_state")
@@ -516,7 +516,7 @@ class ClientAuthenticationStructure(Structure):
 						structure_state=ClientAuthenticationStructureStateEnum.ClientAuthenticationSuccessful
 					)
 					self.send_response(
-						client_server_message=AuthenticationResponseClientServerMessage(
+						client_server_message=AuthenticationResponseClientAuthenticationClientServerMessage(
 							is_successful=True,
 							destination_uuid=self.__client_uuid,
 							external_client_id=claims["sub"]
@@ -561,7 +561,7 @@ class ClientAuthenticationManagerStructure(Structure):
 		)
 
 	def __openid_authentication_requested(self, structure_influence: StructureInfluence):
-		openid_authentication_request = structure_influence.get_client_server_message()  # type: OpenidAuthenticationRequestClientServerMessage
+		openid_authentication_request = structure_influence.get_client_server_message()  # type: OpenidAuthenticationRequestClientAuthenticationClientServerMessage
 		client_uuid = structure_influence.get_source_uuid()
 		self.__client_authentication_structure_per_client_uuid_semphore.acquire()
 		if client_uuid not in self.__client_authentication_structure_per_client_uuid:
@@ -579,7 +579,7 @@ class ClientAuthenticationManagerStructure(Structure):
 		)
 
 	def __openid_authentication_response_received(self, structure_influence: StructureInfluence):
-		openid_authentication_response = structure_influence.get_client_server_message()  # type: OpenidAuthenticationResponseClientServerMessage
+		openid_authentication_response = structure_influence.get_client_server_message()  # type: OpenidAuthenticationResponseClientAuthenticationClientServerMessage
 		self.__client_authentication_structure_per_client_uuid_semphore.acquire()
 		for client_uuid in self.__client_authentication_structure_per_client_uuid.keys():
 			client_authentication_structure = self.__client_authentication_structure_per_client_uuid[client_uuid]
@@ -612,7 +612,7 @@ class ClientAuthenticationManager():
 
 	def authenticate_client(self, *, timeout_seconds: float) -> bool:
 
-		authentication_response_client_server_message = None  # type: AuthenticationResponseClientServerMessage
+		authentication_response_client_server_message = None  # type: AuthenticationResponseClientAuthenticationClientServerMessage
 		authentication_response_client_server_message_blocking_semaphore = Semaphore()
 		authentication_response_client_server_message_blocking_semaphore.acquire()
 		found_exception = None  # type: Exception
@@ -629,9 +629,9 @@ class ClientAuthenticationManager():
 			def callback(client_server_message: ClientAuthenticationClientServerMessage):
 				nonlocal authentication_response_client_server_message
 
-				if isinstance(client_server_message, UrlNavigationNeededResponseClientServerMessage):
+				if isinstance(client_server_message, UrlNavigationNeededResponseClientAuthenticationClientServerMessage):
 					client_server_message.navigate_to_url()
-				elif isinstance(client_server_message, AuthenticationResponseClientServerMessage):
+				elif isinstance(client_server_message, AuthenticationResponseClientAuthenticationClientServerMessage):
 					authentication_response_client_server_message = client_server_message  # store the message so that the null check will fail
 					authentication_response_client_server_message_blocking_semaphore.release()
 				else:
@@ -648,7 +648,7 @@ class ClientAuthenticationManager():
 			)
 
 			client_authentication_client_messenger.send_to_server(
-				request_client_server_message=OpenidAuthenticationRequestClientServerMessage()
+				request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage()
 			)
 
 			print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: acquiring")
