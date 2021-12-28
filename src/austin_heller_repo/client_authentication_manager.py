@@ -89,14 +89,18 @@ class OpenidAuthenticationRequestClientAuthenticationClientServerMessage(ClientA
 
 class UrlNavigationNeededResponseClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
-	def __init__(self, *, url: str, destination_uuid: str):
+	def __init__(self, *, url: str, destination_uuid: str, external_client_id: str):
 		super().__init__()
 
 		self.__url = url
 		self.__destination_uuid = destination_uuid
+		self.__external_client_id = external_client_id
 
 	def get_url(self) -> str:
 		return self.__url
+
+	def get_external_client_id(self) -> str:
+		return self.__external_client_id
 
 	def navigate_to_url(self):
 		webbrowser.open(self.__url, new=2)
@@ -109,6 +113,7 @@ class UrlNavigationNeededResponseClientAuthenticationClientServerMessage(ClientA
 		json_object = super().to_json()
 		json_object["url"] = self.__url
 		json_object["destination_uuid"] = self.__destination_uuid
+		json_object["external_client_id"] = self.__external_client_id
 		return json_object
 
 	def is_response(self) -> bool:
@@ -456,6 +461,11 @@ class ClientAuthenticationStructure(Structure):
 	# TODO set the state from ClientWaitingForResponse back to ClientUnauthenticated if timeout
 
 	def __client_authentication_requested(self, structure_influence: StructureInfluence):
+
+		openid_authentication_request = structure_influence.get_client_server_message()  # type: OpenidAuthenticationRequestClientAuthenticationClientServerMessage
+		if openid_authentication_request.get_external_client_id() != self.__external_client_id:
+			raise Exception(f"Unexpected external_client_id mismatch. Found: {openid_authentication_request.get_external_client_id()}, Expected: {self.__external_client_id}.")
+
 		self.__expected_response_nonce = str(uuid.uuid4())
 
 		provider = OAuth2Session(
@@ -475,7 +485,8 @@ class ClientAuthenticationStructure(Structure):
 			self.send_response(
 				client_server_message=UrlNavigationNeededResponseClientAuthenticationClientServerMessage(
 					url=oauth2_url,
-					destination_uuid=self.__client_uuid
+					destination_uuid=self.__client_uuid,
+					external_client_id=self.__external_client_id
 				)
 			)
 		finally:
