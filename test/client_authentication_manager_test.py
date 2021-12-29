@@ -176,8 +176,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			nonlocal expected_external_client_id
 
 			callback_total += 1
-			print(
-				f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
+			print(f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
 			if callback_total == 1:
 				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientAuthenticationClientServerMessage)
 				self.assertEqual(expected_external_client_id, client_server_message.get_external_client_id())

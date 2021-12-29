@@ -30,6 +30,7 @@ class ClientAuthenticationClientServerMessageTypeEnum(ClientServerMessageTypeEnu
 	OpenidAuthenticationResponse = "openid_authentication_response"
 	AuthenticationResponse = "authentication_response"
 	UnexpectedAuthenticationRequest = "unexpected_authentication_request"
+	UnexpectedOpenidAuthenticationResponse = "unexpected_openid_authentication_response"
 
 
 class ClientAuthenticationManagerStructureStateEnum(StructureStateEnum):
@@ -40,8 +41,6 @@ class ClientAuthenticationClientServerMessage(ClientServerMessage, ABC):
 
 	def __init__(self):
 		super().__init__()
-
-		pass
 
 	@classmethod
 	def get_client_server_message_type_class(cls) -> Type[ClientServerMessageTypeEnum]:
@@ -83,6 +82,7 @@ class OpenidAuthenticationRequestClientAuthenticationClientServerMessage(ClientA
 		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
+			external_client_id=self.__external_client_id,
 			destination_uuid=destination_uuid
 		)
 
@@ -132,6 +132,7 @@ class UrlNavigationNeededResponseClientAuthenticationClientServerMessage(ClientA
 		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
+			external_client_id=self.__external_client_id,
 			destination_uuid=destination_uuid
 		)
 
@@ -174,7 +175,7 @@ class OpenidAuthenticationResponseClientAuthenticationClientServerMessage(Client
 		return True
 
 	def get_structural_error_client_server_message_response(self, *, structure_transition_exception: StructureTransitionException, destination_uuid: str) -> ClientServerMessage:
-		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
+		return UnexpectedOpenidAuthenticationResponseClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
 			destination_uuid=destination_uuid
@@ -228,11 +229,61 @@ class AuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthen
 		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
+			external_client_id=self.__external_client_id,
 			destination_uuid=destination_uuid
 		)
 
 
 class UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
+
+	def __init__(self, *, structure_state_name: str, client_server_message_json_string: str, external_client_id: str, destination_uuid: str):
+		super().__init__()
+
+		self.__structure_state_name = structure_state_name
+		self.__client_server_message_json_string = client_server_message_json_string
+		self.__external_client_id = external_client_id
+		self.__destination_uuid = destination_uuid
+
+	def get_structure_state(self) -> ClientAuthenticationStructureStateEnum:
+		return ClientAuthenticationStructureStateEnum(self.__structure_state_name)
+
+	def get_client_server_message(self) -> ClientAuthenticationClientServerMessage:
+		return ClientAuthenticationClientServerMessage.parse_from_json(
+			json_object=json.loads(self.__client_server_message_json_string)
+		)
+
+	def get_external_client_id(self) -> str:
+		return self.__external_client_id
+
+	@classmethod
+	def get_client_server_message_type(cls) -> ClientServerMessageTypeEnum:
+		return ClientAuthenticationClientServerMessageTypeEnum.UnexpectedAuthenticationRequest
+
+	def to_json(self) -> Dict:
+		json_object = super().to_json()
+		json_object["structure_state_name"] = self.__structure_state_name
+		json_object["client_server_message_json_string"] = self.__client_server_message_json_string
+		json_object["external_client_id"] = self.__external_client_id
+		json_object["destination_uuid"] = self.__destination_uuid
+		return json_object
+
+	def is_response(self) -> bool:
+		return True
+
+	def get_destination_uuid(self) -> str:
+		return self.__destination_uuid
+
+	def is_structural_influence(self) -> bool:
+		return False
+
+	def is_ordered(self) -> bool:
+		return True
+
+	def get_structural_error_client_server_message_response(self, *, structure_transition_exception: StructureTransitionException, destination_uuid: str) -> ClientServerMessage:
+		return None
+
+
+class UnexpectedOpenidAuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
 	def __init__(self, *, structure_state_name: str, client_server_message_json_string: str, destination_uuid: str):
 		super().__init__()
@@ -251,7 +302,7 @@ class UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(Cli
 
 	@classmethod
 	def get_client_server_message_type(cls) -> ClientServerMessageTypeEnum:
-		return ClientAuthenticationClientServerMessageTypeEnum.UnexpectedAuthenticationRequest
+		return ClientAuthenticationClientServerMessageTypeEnum.UnexpectedOpenidAuthenticationResponse
 
 	def to_json(self) -> Dict:
 		json_object = super().to_json()
