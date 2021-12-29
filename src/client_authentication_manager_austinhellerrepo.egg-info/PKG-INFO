@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: client-authentication-manager-austinhellerrepo
-Version: 0.0.9
+Version: 0.0.10
 Summary: A framework for authenticating clients
 Home-page: https://github.com/AustinHellerRepo/ClientAuthenticationManager
 Author: Austin Heller

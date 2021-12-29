@@ -13,8 +13,8 @@ from austin_heller_repo.common import HostPointer
 
 def get_default_openid_authentication_configuration() -> OpenidAuthenticationConfiguration:
 	config = configparser.ConfigParser()
-	config.read("./oauth_settings.ini")
 
+	config.read("./oauth_settings.ini")
 	google_config = config["Google"]
 	authentication_url = google_config["AuthorizationUrl"]
 	token_url = google_config["TokenUrl"]

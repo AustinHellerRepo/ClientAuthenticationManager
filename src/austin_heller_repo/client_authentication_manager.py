@@ -427,7 +427,7 @@ class OpenidConnectRedirectHttpServer():
 
 class ClientAuthenticationStructure(Structure):
 
-	def __init__(self, *, openid_authentication_configuration: OpenidAuthenticationConfiguration, client_uuid: str, external_client_id: str):
+	def __init__(self, *, openid_authentication_configuration: OpenidAuthenticationConfiguration, client_uuid: str, external_client_id: str, is_debug: bool = False):
 		super().__init__(
 			states=ClientAuthenticationStructureStateEnum,
 			initial_state=ClientAuthenticationStructureStateEnum.ClientUnauthenticated
@@ -436,6 +436,7 @@ class ClientAuthenticationStructure(Structure):
 		self.__openid_authentication_configuration = openid_authentication_configuration
 		self.__client_uuid = client_uuid
 		self.__external_client_id = external_client_id
+		self.__is_debug = is_debug
 
 		self.__expected_response_nonce = None  # type: str
 		self.__oauth2_state = None  # type: str
@@ -496,7 +497,8 @@ class ClientAuthenticationStructure(Structure):
 		openid_authentication_response = structure_influence.get_client_server_message()  # type: OpenidAuthenticationResponseClientAuthenticationClientServerMessage
 		oauth2_state = openid_authentication_response.get_state()
 		if oauth2_state == self.__oauth2_state:
-			print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Found oauth2_state")
+			if self.__is_debug:
+				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Found oauth2_state")
 
 			provider = OAuth2Session(
 				client_id=self.__openid_authentication_configuration.get_client_id(),
@@ -511,15 +513,16 @@ class ClientAuthenticationStructure(Structure):
 					client_secret=self.__openid_authentication_configuration.get_client_secret()
 				)
 
-				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: fetch_token_response: {fetch_token_response}")
+				if self.__is_debug:
+					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: fetch_token_response: {fetch_token_response}")
 
 				self.__access_token = fetch_token_response["access_token"]
 
 				jwt_pubkeys = requests.get(self.__openid_authentication_configuration.get_jwt_pubkey_url()).json()
 
-				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: jwt_pubkeys: {jwt_pubkeys}")
-
-				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: get_algorithm: {self.__openid_authentication_configuration.get_algorithm()}")
+				if self.__is_debug:
+					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: jwt_pubkeys: {jwt_pubkeys}")
+					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: get_algorithm: {self.__openid_authentication_configuration.get_algorithm()}")
 
 				claims = jwt.decode(
 					token=fetch_token_response["id_token"],
@@ -531,8 +534,9 @@ class ClientAuthenticationStructure(Structure):
 				)
 
 				if claims["nonce"] == self.__expected_response_nonce:
-					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Found nonce")
-					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Google user ID: {claims['sub']}")
+					if self.__is_debug:
+						print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Found nonce")
+						print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Google user ID: {claims['sub']}")
 					self.set_state(
 						structure_state=ClientAuthenticationStructureStateEnum.ClientAuthenticationSuccessful
 					)
@@ -545,14 +549,16 @@ class ClientAuthenticationStructure(Structure):
 						)
 					)
 				else:
-					print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Nonce mismatch: Actual: {claims['nonce']} != Expected: {self.__expected_response_nonce}")
+					if self.__is_debug:
+						print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: Nonce mismatch: Actual: {claims['nonce']} != Expected: {self.__expected_response_nonce}")
 					self.set_state(
 						structure_state=ClientAuthenticationStructureStateEnum.ClientAuthenticationFailure
 					)
 			finally:
 				provider.close()
 		else:
-			print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: state mismatch: Actual {oauth2_state} != Expected {self.__oauth2_state}.")
+			if self.__is_debug:
+				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: state mismatch: Actual {oauth2_state} != Expected {self.__oauth2_state}.")
 
 
 class ClientAuthenticationManagerStructure(Structure):
@@ -630,9 +636,10 @@ class ClientAuthenticationManagerStructureFactory(StructureFactory):
 
 class ClientAuthenticationManager():
 
-	def __init__(self, *, client_authentication_client_messenger_factory: ClientMessengerFactory):
+	def __init__(self, *, client_authentication_client_messenger_factory: ClientMessengerFactory, is_debug: bool = False):
 
 		self.__client_authentication_client_messenger_factory = client_authentication_client_messenger_factory
+		self.__is_debug = is_debug
 
 	def authenticate_client(self, *, timeout_seconds: float) -> bool:
 
@@ -677,9 +684,11 @@ class ClientAuthenticationManager():
 				)
 			)
 
-			print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: acquiring")
+			if self.__is_debug:
+				print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: acquiring")
 			authentication_response_client_server_message_blocking_semaphore.acquire()
-			print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: acquired")
+			if self.__is_debug:
+				print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: acquired")
 			authentication_response_client_server_message_blocking_semaphore.release()
 
 			client_authentication_client_messenger.dispose()
@@ -693,9 +702,11 @@ class ClientAuthenticationManager():
 		if not timeout_thread.try_wait():
 			authentication_response_client_server_message_blocking_semaphore.release()
 
-		print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: try_join: start")
+		if self.__is_debug:
+			print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: try_join: start")
 		timeout_thread.try_join()
-		print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: try_join: end")
+		if self.__is_debug:
+			print(f"{datetime.utcnow()}: ClientAuthenticationManager: authenticate_client: try_join: end")
 
 		if authentication_response_client_server_message is None:
 			return False
