@@ -611,6 +611,9 @@ class ClientAuthenticationStructure(Structure):
 			if self.__is_debug:
 				print(f"{datetime.utcnow()}: ClientAuthenticationStructure: __client_authentication_response_received: state mismatch: Actual {oauth2_state} != Expected {self.__oauth2_state}.")
 
+	def dispose(self):
+		pass
+
 
 class ClientAuthenticationManagerStructure(Structure):
 
@@ -668,8 +671,15 @@ class ClientAuthenticationManagerStructure(Structure):
 				client_authentication_structure.update_structure(
 					structure_influence=structure_influence
 				)
+				if client_authentication_structure.get_state() in [ClientAuthenticationStructureStateEnum.ClientAuthenticationSuccessful, ClientAuthenticationStructureStateEnum.ClientAuthenticationFailure]:
+					client_authentication_structure.dispose()
+					del self.__client_authentication_structure_per_external_client_id[external_client_id]
 				break
 		self.__client_authentication_structure_per_external_client_id_semaphore.release()
+
+	def dispose(self):
+		for external_client_id in self.__client_authentication_structure_per_external_client_id.keys():
+			self.__client_authentication_structure_per_external_client_id[external_client_id].dispose()
 
 
 class ClientAuthenticationManagerStructureFactory(StructureFactory):
