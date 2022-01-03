@@ -168,18 +168,20 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 		callback_total = 0
 		authentication_response_client_server_message = None  # type: AuthenticationResponseClientAuthenticationClientServerMessage
-		expected_external_client_id = str(uuid.uuid4())
+		expected_external_metadata_json = {
+			"client_uuid": str(uuid.uuid4())
+		}
 
 		def callback(client_server_message: ClientAuthenticationClientServerMessage):
 			nonlocal callback_total
 			nonlocal authentication_response_client_server_message
-			nonlocal expected_external_client_id
+			nonlocal expected_external_metadata_json
 
 			callback_total += 1
 			print(f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
 			if callback_total == 1:
 				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientAuthenticationClientServerMessage)
-				self.assertEqual(expected_external_client_id, client_server_message.get_external_client_id())
+				self.assertEqual(expected_external_metadata_json, client_server_message.get_external_metadata_json())
 				client_server_message.navigate_to_url()
 			elif callback_total == 2:
 				self.assertIsInstance(client_server_message, AuthenticationResponseClientAuthenticationClientServerMessage)
@@ -201,7 +203,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 		client_messenger.send_to_server(
 			request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage(
-				external_client_id=expected_external_client_id
+				external_metadata_json=expected_external_metadata_json
 			)
 		)
 
@@ -242,7 +244,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 		self.assertEqual(2, callback_total)
 		self.assertIsNotNone(authentication_response_client_server_message)
-		self.assertEqual(expected_external_client_id, authentication_response_client_server_message.get_external_client_id())
+		self.assertEqual(expected_external_metadata_json, authentication_response_client_server_message.get_external_metadata_json())
 
 	def test_request_authentication_and_stop_immediately(self):
 
@@ -289,18 +291,20 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 		callback_total = 0
 		authentication_response_client_server_message = None  # type: AuthenticationResponseClientAuthenticationClientServerMessage
-		expected_external_client_id = str(uuid.uuid4())
+		expected_external_metadata_json ={
+			"client_uuid": str(uuid.uuid4())
+		}
 
 		def callback(client_server_message: ClientAuthenticationClientServerMessage):
 			nonlocal callback_total
 			nonlocal authentication_response_client_server_message
-			nonlocal expected_external_client_id
+			nonlocal expected_external_metadata_json
 
 			callback_total += 1
 			print(f"{datetime.utcnow()}: test: callback: client_server_message: {client_server_message.__class__.get_client_server_message_type()}")
 			if callback_total == 1:
 				self.assertIsInstance(client_server_message, UrlNavigationNeededResponseClientAuthenticationClientServerMessage)
-				self.assertEqual(expected_external_client_id, client_server_message.get_external_client_id())
+				self.assertEqual(expected_external_metadata_json, client_server_message.get_external_metadata_json())
 				client_server_message.navigate_to_url()
 			elif callback_total == 2:
 				self.assertIsInstance(client_server_message, AuthenticationResponseClientAuthenticationClientServerMessage)
@@ -322,7 +326,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 
 		client_messenger.send_to_server(
 			request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage(
-				external_client_id=expected_external_client_id
+				external_metadata_json=expected_external_metadata_json
 			)
 		)
 
@@ -355,7 +359,7 @@ class ClientAuthenticationManagerTest(unittest.TestCase):
 			raise found_exception
 
 		self.assertEqual(2, callback_total)
-		self.assertEqual(expected_external_client_id, authentication_response_client_server_message.get_external_client_id())
+		self.assertEqual(expected_external_metadata_json, authentication_response_client_server_message.get_external_metadata_json())
 
 	def test_client_authentication_manager(self):
 

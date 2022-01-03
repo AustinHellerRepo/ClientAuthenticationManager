@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from urllib.parse import urlparse, parse_qs
 from austin_heller_repo.threading import Semaphore, TimeoutThread
 from austin_heller_repo.socket_queued_message_framework import Structure, StructureStateEnum, ClientServerMessageTypeEnum, ClientServerMessage, StructureInfluence, StructureTransitionException, ClientMessengerFactory, ServerMessengerFactory, ClientMessenger, ServerMessenger, StructureFactory
+from austin_heller_repo.common import hash_json_dict
 from jose import jwt
 import requests
 from requests_oauthlib import OAuth2Session
@@ -49,13 +50,13 @@ class ClientAuthenticationClientServerMessage(ClientServerMessage, ABC):
 
 class OpenidAuthenticationRequestClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
-	def __init__(self, *, external_client_id: str):
+	def __init__(self, *, external_metadata_json: Dict):
 		super().__init__()
 
-		self.__external_client_id = external_client_id
+		self.__external_metadata_json = external_metadata_json
 
-	def get_external_client_id(self) -> str:
-		return self.__external_client_id
+	def get_external_metadata_json(self) -> Dict:
+		return self.__external_metadata_json
 
 	@classmethod
 	def get_client_server_message_type(cls) -> ClientServerMessageTypeEnum:
@@ -63,7 +64,7 @@ class OpenidAuthenticationRequestClientAuthenticationClientServerMessage(ClientA
 
 	def to_json(self) -> Dict:
 		json_object = super().to_json()
-		json_object["external_client_id"] = self.__external_client_id
+		json_object["external_metadata_json"] = self.__external_metadata_json
 		return json_object
 
 	def is_response(self) -> bool:
@@ -82,25 +83,25 @@ class OpenidAuthenticationRequestClientAuthenticationClientServerMessage(ClientA
 		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
-			external_client_id=self.__external_client_id,
+			external_metadata_json=self.__external_metadata_json,
 			destination_uuid=destination_uuid
 		)
 
 
 class UrlNavigationNeededResponseClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
-	def __init__(self, *, url: str, destination_uuid: str, external_client_id: str):
+	def __init__(self, *, url: str, destination_uuid: str, external_metadata_json: Dict):
 		super().__init__()
 
 		self.__url = url
 		self.__destination_uuid = destination_uuid
-		self.__external_client_id = external_client_id
+		self.__external_metadata_json = external_metadata_json
 
 	def get_url(self) -> str:
 		return self.__url
 
-	def get_external_client_id(self) -> str:
-		return self.__external_client_id
+	def get_external_metadata_json(self) -> Dict:
+		return self.__external_metadata_json
 
 	def navigate_to_url(self):
 		webbrowser.open(self.__url, new=2)
@@ -113,7 +114,7 @@ class UrlNavigationNeededResponseClientAuthenticationClientServerMessage(ClientA
 		json_object = super().to_json()
 		json_object["url"] = self.__url
 		json_object["destination_uuid"] = self.__destination_uuid
-		json_object["external_client_id"] = self.__external_client_id
+		json_object["external_metadata_json"] = self.__external_metadata_json
 		return json_object
 
 	def is_response(self) -> bool:
@@ -132,7 +133,7 @@ class UrlNavigationNeededResponseClientAuthenticationClientServerMessage(ClientA
 		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
-			external_client_id=self.__external_client_id,
+			external_metadata_json=self.__external_metadata_json,
 			destination_uuid=destination_uuid
 		)
 
@@ -184,19 +185,19 @@ class OpenidAuthenticationResponseClientAuthenticationClientServerMessage(Client
 
 class AuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
-	def __init__(self, *, is_successful: bool, destination_uuid: str, external_client_id: str, authentication_id: str):
+	def __init__(self, *, is_successful: bool, destination_uuid: str, external_metadata_json: Dict, authentication_id: str):
 		super().__init__()
 
 		self.__is_successful = is_successful
 		self.__destination_uuid = destination_uuid
-		self.__external_client_id = external_client_id
+		self.__external_metadata_json = external_metadata_json
 		self.__authentication_id = authentication_id
 
 	def is_successful(self) -> bool:
 		return self.__is_successful
 
-	def get_external_client_id(self) -> str:
-		return self.__external_client_id
+	def get_external_metadata_json(self) -> Dict:
+		return self.__external_metadata_json
 
 	def get_authentication_id(self) -> str:
 		return self.__authentication_id
@@ -209,7 +210,7 @@ class AuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthen
 		json_object = super().to_json()
 		json_object["is_successful"] = self.__is_successful
 		json_object["destination_uuid"] = self.__destination_uuid
-		json_object["external_client_id"] = self.__external_client_id
+		json_object["external_metadata_json"] = self.__external_metadata_json
 		json_object["authentication_id"] = self.__authentication_id
 		return json_object
 
@@ -229,19 +230,19 @@ class AuthenticationResponseClientAuthenticationClientServerMessage(ClientAuthen
 		return UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(
 			structure_state_name=structure_transition_exception.get_structure_state().value,
 			client_server_message_json_string=json.dumps(structure_transition_exception.get_structure_influence().get_client_server_message().to_json()),
-			external_client_id=self.__external_client_id,
+			external_metadata_json=self.__external_metadata_json,
 			destination_uuid=destination_uuid
 		)
 
 
 class UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(ClientAuthenticationClientServerMessage):
 
-	def __init__(self, *, structure_state_name: str, client_server_message_json_string: str, external_client_id: str, destination_uuid: str):
+	def __init__(self, *, structure_state_name: str, client_server_message_json_string: str, external_metadata_json: Dict, destination_uuid: str):
 		super().__init__()
 
 		self.__structure_state_name = structure_state_name
 		self.__client_server_message_json_string = client_server_message_json_string
-		self.__external_client_id = external_client_id
+		self.__external_metadata_json = external_metadata_json
 		self.__destination_uuid = destination_uuid
 
 	def get_structure_state(self) -> ClientAuthenticationStructureStateEnum:
@@ -252,8 +253,8 @@ class UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(Cli
 			json_object=json.loads(self.__client_server_message_json_string)
 		)
 
-	def get_external_client_id(self) -> str:
-		return self.__external_client_id
+	def get_external_metadata_json(self) -> Dict:
+		return self.__external_metadata_json
 
 	@classmethod
 	def get_client_server_message_type(cls) -> ClientServerMessageTypeEnum:
@@ -263,7 +264,7 @@ class UnexpectedAuthenticationRequestClientAuthenticationClientServerMessage(Cli
 		json_object = super().to_json()
 		json_object["structure_state_name"] = self.__structure_state_name
 		json_object["client_server_message_json_string"] = self.__client_server_message_json_string
-		json_object["external_client_id"] = self.__external_client_id
+		json_object["external_metadata_json"] = self.__external_metadata_json
 		json_object["destination_uuid"] = self.__destination_uuid
 		return json_object
 
@@ -478,7 +479,7 @@ class OpenidConnectRedirectHttpServer():
 
 class ClientAuthenticationStructure(Structure):
 
-	def __init__(self, *, openid_authentication_configuration: OpenidAuthenticationConfiguration, client_uuid: str, external_client_id: str, is_debug: bool = False):
+	def __init__(self, *, openid_authentication_configuration: OpenidAuthenticationConfiguration, client_uuid: str, external_metadata_json: Dict, is_debug: bool = False):
 		super().__init__(
 			states=ClientAuthenticationStructureStateEnum,
 			initial_state=ClientAuthenticationStructureStateEnum.ClientUnauthenticated
@@ -486,7 +487,7 @@ class ClientAuthenticationStructure(Structure):
 
 		self.__openid_authentication_configuration = openid_authentication_configuration
 		self.__client_uuid = client_uuid
-		self.__external_client_id = external_client_id
+		self.__external_metadata_json = external_metadata_json
 		self.__is_debug = is_debug
 
 		self.__expected_response_nonce = None  # type: str
@@ -515,8 +516,8 @@ class ClientAuthenticationStructure(Structure):
 	def __client_authentication_requested(self, structure_influence: StructureInfluence):
 
 		openid_authentication_request = structure_influence.get_client_server_message()  # type: OpenidAuthenticationRequestClientAuthenticationClientServerMessage
-		if openid_authentication_request.get_external_client_id() != self.__external_client_id:
-			raise Exception(f"Unexpected external_client_id mismatch. Found: {openid_authentication_request.get_external_client_id()}, Expected: {self.__external_client_id}.")
+		if openid_authentication_request.get_external_metadata_json() != self.__external_metadata_json:
+			raise Exception(f"Unexpected external_metadata_json mismatch. Found: {openid_authentication_request.get_external_metadata_json()}, Expected: {self.__external_metadata_json}.")
 
 		self.__expected_response_nonce = str(uuid.uuid4())
 
@@ -538,7 +539,7 @@ class ClientAuthenticationStructure(Structure):
 				client_server_message=UrlNavigationNeededResponseClientAuthenticationClientServerMessage(
 					url=oauth2_url,
 					destination_uuid=self.__client_uuid,
-					external_client_id=self.__external_client_id
+					external_metadata_json=self.__external_metadata_json
 				)
 			)
 		finally:
@@ -595,7 +596,7 @@ class ClientAuthenticationStructure(Structure):
 						client_server_message=AuthenticationResponseClientAuthenticationClientServerMessage(
 							is_successful=True,
 							destination_uuid=self.__client_uuid,
-							external_client_id=self.__external_client_id,
+							external_metadata_json=self.__external_metadata_json,
 							authentication_id=claims["sub"]
 						)
 					)
@@ -625,8 +626,8 @@ class ClientAuthenticationManagerStructure(Structure):
 
 		self.__openid_authentication_configuration = openid_authentication_configuration
 
-		self.__client_authentication_structure_per_external_client_id = {}  # type: Dict[str, ClientAuthenticationStructure]
-		self.__client_authentication_structure_per_external_client_id_semaphore = Semaphore()
+		self.__client_authentication_structure_per_external_metadata_json_hash = {}  # type: Dict[str, ClientAuthenticationStructure]
+		self.__client_authentication_structure_per_external_metadata_json_hash_semaphore = Semaphore()
 
 		self.add_transition(
 			client_server_message_type=ClientAuthenticationClientServerMessageTypeEnum.OpenidAuthenticationRequest,
@@ -644,42 +645,45 @@ class ClientAuthenticationManagerStructure(Structure):
 
 	def __openid_authentication_requested(self, structure_influence: StructureInfluence):
 		openid_authentication_request = structure_influence.get_client_server_message()  # type: OpenidAuthenticationRequestClientAuthenticationClientServerMessage
-		external_client_id = openid_authentication_request.get_external_client_id()
+		external_metadata_json = openid_authentication_request.get_external_metadata_json()
+		external_metadata_json_hash = hash_json_dict(
+			json_dict=external_metadata_json
+		)
 		client_uuid = structure_influence.get_source_uuid()
-		self.__client_authentication_structure_per_external_client_id_semaphore.acquire()
-		if external_client_id not in self.__client_authentication_structure_per_external_client_id:
+		self.__client_authentication_structure_per_external_metadata_json_hash_semaphore.acquire()
+		if external_metadata_json_hash not in self.__client_authentication_structure_per_external_metadata_json_hash:
 			client_authentication_structure = ClientAuthenticationStructure(
 				openid_authentication_configuration=self.__openid_authentication_configuration,
 				client_uuid=client_uuid,
-				external_client_id=external_client_id
+				external_metadata_json=external_metadata_json
 			)
 			self.register_child_structure(
 				structure=client_authentication_structure
 			)
-			self.__client_authentication_structure_per_external_client_id[external_client_id] = client_authentication_structure
-		self.__client_authentication_structure_per_external_client_id_semaphore.release()
-		self.__client_authentication_structure_per_external_client_id[external_client_id].update_structure(
+			self.__client_authentication_structure_per_external_metadata_json_hash[external_metadata_json_hash] = client_authentication_structure
+		self.__client_authentication_structure_per_external_metadata_json_hash_semaphore.release()
+		self.__client_authentication_structure_per_external_metadata_json_hash[external_metadata_json_hash].update_structure(
 			structure_influence=structure_influence
 		)
 
 	def __openid_authentication_response_received(self, structure_influence: StructureInfluence):
 		openid_authentication_response = structure_influence.get_client_server_message()  # type: OpenidAuthenticationResponseClientAuthenticationClientServerMessage
-		self.__client_authentication_structure_per_external_client_id_semaphore.acquire()
-		for external_client_id in self.__client_authentication_structure_per_external_client_id.keys():
-			client_authentication_structure = self.__client_authentication_structure_per_external_client_id[external_client_id]
+		self.__client_authentication_structure_per_external_metadata_json_hash_semaphore.acquire()
+		for external_metadata_json_hash in self.__client_authentication_structure_per_external_metadata_json_hash.keys():
+			client_authentication_structure = self.__client_authentication_structure_per_external_metadata_json_hash[external_metadata_json_hash]
 			if client_authentication_structure.get_oauth2_state() == openid_authentication_response.get_state():
 				client_authentication_structure.update_structure(
 					structure_influence=structure_influence
 				)
 				if client_authentication_structure.get_state() in [ClientAuthenticationStructureStateEnum.ClientAuthenticationSuccessful, ClientAuthenticationStructureStateEnum.ClientAuthenticationFailure]:
 					client_authentication_structure.dispose()
-					del self.__client_authentication_structure_per_external_client_id[external_client_id]
+					del self.__client_authentication_structure_per_external_metadata_json_hash[external_metadata_json_hash]
 				break
-		self.__client_authentication_structure_per_external_client_id_semaphore.release()
+		self.__client_authentication_structure_per_external_metadata_json_hash_semaphore.release()
 
 	def dispose(self):
-		for external_client_id in self.__client_authentication_structure_per_external_client_id.keys():
-			self.__client_authentication_structure_per_external_client_id[external_client_id].dispose()
+		for external_metadata_json_hash in self.__client_authentication_structure_per_external_metadata_json_hash.keys():
+			self.__client_authentication_structure_per_external_metadata_json_hash[external_metadata_json_hash].dispose()
 
 
 class ClientAuthenticationManagerStructureFactory(StructureFactory):
@@ -739,9 +743,13 @@ class ClientAuthenticationManager():
 				on_exception=on_exception
 			)
 
+			external_metadata_json = {
+				"nonce": str(uuid.uuid4())
+			}
+
 			client_authentication_client_messenger.send_to_server(
 				request_client_server_message=OpenidAuthenticationRequestClientAuthenticationClientServerMessage(
-					external_client_id=None
+					external_metadata_json=external_metadata_json
 				)
 			)
 
